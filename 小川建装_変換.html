@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小川建装 請求書フォーマット変換ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- CSV解析ライブラリ PapaParse を読み込み -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8 font-sans text-gray-800">
+
+    <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-8">
+        <h1 class="text-2xl font-bold text-blue-600 mb-2 border-b-2 border-blue-200 pb-4">
+            📄 請求書フォーマット変換ツール
+        </h1>
+        <p class="text-sm text-gray-500 mb-6">
+            小川建装からの請求書CSVファイルを選択して、「変換してダウンロード」ボタンを押してください。<br>
+            ※この処理はすべてお使いのパソコン内で行われるため、データが外部に送信されることはありません。
+        </p>
+
+        <!-- 設定・ファイル選択エリア -->
+        <div class="bg-blue-50 p-6 rounded-lg mb-6 border border-blue-100">
+            <div class="mb-6">
+                <label class="block text-sm font-bold text-gray-700 mb-2">方法A：パソコン上のCSVファイルを選択</label>
+                <input type="file" id="csvFileInput" accept=".csv" class="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-md file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-blue-600 file:text-white
+                    hover:file:bg-blue-700
+                    cursor-pointer
+                ">
+                <div class="mt-2">
+                    <select id="encodingSelect" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2">
+                        <option value="UTF-8" selected>文字コード: UTF-8</option>
+                        <option value="Shift-JIS">文字コード: Shift-JIS (Excel出力の標準)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-gray-300"></div>
+                <span class="flex-shrink-0 mx-4 text-gray-500 font-bold text-sm">または</span>
+                <div class="flex-grow border-t border-gray-300"></div>
+            </div>
+
+            <div class="mt-4">
+                <label class="block text-sm font-bold text-gray-700 mb-2">方法B：スプレッドシートの公開CSV URLを入力 <span class="text-xs font-normal text-red-500">（手動書き出し不要）</span></label>
+                <input type="text" id="csvUrlInput" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                <p class="text-xs text-gray-500 mt-2">
+                    ※スプレッドシートのメニューから <strong>「ファイル」＞「共有」＞「ウェブに公開」</strong> を選び、<br>
+                    <strong>「対象のシート名」</strong> と <strong>「カンマ区切り形式（.csv）」</strong> を選択して発行されたURLをここに貼り付けます。
+                </p>
+            </div>
+        </div>
+
+        <!-- 実行ボタン -->
+        <button id="convertBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-200 flex justify-center items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+            変換してダウンロード
+        </button>
+
+        <!-- メッセージ表示エリア -->
+        <div id="messageArea" class="mt-6 hidden p-4 rounded-lg"></div>
+    </div>
+
+    <script>
+        document.getElementById('convertBtn').addEventListener('click', function() {
+            const fileInput = document.getElementById('csvFileInput');
+            const urlInput = document.getElementById('csvUrlInput');
+            const encoding = document.getElementById('encodingSelect').value;
+            const messageArea = document.getElementById('messageArea');
+
+            const parseConfig = {
+                complete: function(results) {
+                    try {
+                        const convertedData = processData(results.data);
+                        downloadCSV(convertedData);
+                        showMessage('🎉 変換が成功し、ダウンロードが開始されました！', 'success');
+                    } catch (error) {
+                        showMessage('データの変換中にエラーが発生しました。ファイルの形式が異なる可能性があります。<br>詳細: ' + error.message, 'error');
+                    }
+                },
+                error: function(error) {
+                    showMessage('ファイルの読み込みに失敗しました。URLやファイルが正しいか確認してください。', 'error');
+                }
+            };
+
+            if (urlInput.value.trim() !== "") {
+                // 方法B: URLから直接読み込む場合
+                showMessage('スプレッドシートからデータを取得しています...', 'info');
+                parseConfig.download = true;
+                parseConfig.encoding = "UTF-8"; // スプレッドシートの出力は基本的にUTF-8
+                Papa.parse(urlInput.value.trim(), parseConfig);
+            } else if (fileInput.files.length > 0) {
+                // 方法A: ファイルから読み込む場合
+                parseConfig.encoding = encoding;
+                Papa.parse(fileInput.files[0], parseConfig);
+            } else {
+                showMessage('エラー：CSVファイルを選択するか、スプレッドシートのURLを入力してください。', 'error');
+            }
+        });
+
+        // データの変換ロジック
+        function processData(lines) {
+            let billingDate = "";
+            let totalAmount = 0;
+
+            // 請求日や合計金額を抽出
+            for (let i = 0; i < lines.length; i++) {
+                const row = lines[i];
+                if (row.length > 7 && row[5] === "請求日") {
+                    billingDate = row[6];
+                }
+                if (row.length > 1 && row[0] && row[0].includes("合計")) {
+                    const valStr = row[1].replace(/[^\d]/g, '');
+                    if (valStr) {
+                        totalAmount = parseInt(valStr, 10);
+                    }
+                }
+            }
+
+            // 小川建装は消費税を加算しないため0とする
+            const taxAmount = 0;
+            const totalWithTax = totalAmount;
+
+            // 明細行の抽出
+            const details = [];
+            let isDetailSection = false;
+            let isStep2 = false; // 現場振分（Step2）セクションに入ったかどうかのフラグ
+
+            for (let i = 0; i < lines.length; i++) {
+                const row = lines[i];
+                
+                // 行が空ならスキップ
+                if (!row || row.length === 0) continue;
+                
+                const col0 = row[0] ? row[0].trim() : "";
+                const rowStr = row.join("").replace(/\s/g, '');
+
+                // 「内訳」が出たら詳細セクション開始
+                if (col0 === "内訳") {
+                    isDetailSection = true;
+                    continue;
+                }
+
+                // 「Step2」や「現場」などの見出しが出たらStep2セクション開始とする
+                if (rowStr.includes("Step2") || rowStr.includes("step2") || col0 === "現場名" || col0 === "現場") {
+                    isDetailSection = true;
+                    isStep2 = true;
+                    continue;
+                }
+
+                if (isDetailSection) {
+                    if (col0 === "") continue;
+
+                    // 金額を安全に取得するための新しいロジック（強化版）
+                    let amount = "0";
+                    let foundAmounts = [];
+                    
+                    // 行内の数値を左から順に探す（￥マークやカンマを除去、マイナス値も許容）
+                    for (let j = 1; j < row.length; j++) {
+                        const cleanStr = row[j] ? String(row[j]).replace(/[¥￥\\,\s\u3000]/g, '') : "";
+                        // マイナス（-）から始まる数字も金額として拾うように変更
+                        if (/^-?\d+$/.test(cleanStr)) {
+                            const numVal = parseInt(cleanStr, 10);
+                            if (numVal !== 0) {
+                                foundAmounts.push(numVal);
+                            }
+                        }
+                    }
+                    
+                    if (foundAmounts.length > 0) {
+                        // エクセルで「合計」列を右側に縦結合していると、最初の現場の行の右端に「全体合計」が入ることがあります。
+                        // 全体合計（totalAmount）と一致する数値を除外したリストを作成して誤検知を防ぐ
+                        let validAmounts = foundAmounts.filter(val => val !== totalAmount);
+                        
+                        if (validAmounts.length > 0) {
+                            // 全体合計以外の数値があれば、その中で一番右にあるものを本来の金額とする
+                            amount = validAmounts[validAmounts.length - 1].toString();
+                        } else {
+                            // 全体合計の金額しか見つからない場合（その現場の金額が、たまたま全体の合計額と同じ場合など）
+                            amount = foundAmounts[foundAmounts.length - 1].toString();
+                        }
+                    }
+
+                    if (amount === "0") continue; // 金額が設定されていない行はスキップ
+
+                    // 単位や内容からStep1（日給計算）かどうかを判定する
+                    const unit = row.length > 4 ? (row[4] ? row[4].trim() : "") : "";
+                    const isStep1Line = unit === "日" || unit === "H" || unit === "時間" || col0.includes("日") || col0.match(/\d+\/\d+/);
+
+                    // Step2セクションに入っていない場合、日付や「日」が含まれる行（時給換算行）はスキップする
+                    if (!isStep2 && isStep1Line) {
+                        continue;
+                    }
+
+                    // 小計・消費税・合計などのフッター行は除外
+                    if (col0.includes("小計") || col0.includes("消費税") || col0.includes("合計") || col0.includes("値引")) {
+                        continue;
+                    }
+
+                    // 残った行を「現場の振り分け行」として抽出
+                    details.push({
+                        "現場名": col0,
+                        "金額": amount
+                    });
+                }
+            }
+
+            // 基本書式のヘッダー定義
+            const headers = [
+                "発行日", "帳票No", "発行日", "得意先様コード", "得意先様名", "前回御請求額", "繰越金額", 
+                "御入金額", "税抜金額(10%)", "返品額", "返品額消費税", "値引額", "値引額消費税", 
+                "消費税(10%)", "今回御請求額", "備考", "伝票日付", "伝票番号", "伝票区分", "現場名", 
+                "先方担当者様", "得意先様注文番号", "メーカー", "表示品番", "商品名", "数量", "定価", 
+                "明細単価", "明細金額", "明細摘要", "支払期日"
+            ];
+
+            const outputData = [];
+            outputData.push(headers);
+
+            // 抽出した現場ごとの行を基本書式にマッピング
+            for (let i = 0; i < details.length; i++) {
+                const detail = details[i];
+                const rowData = [
+                    billingDate,                // 発行日
+                    "",                         // 帳票No
+                    billingDate,                // 発行日
+                    "",                         // 得意先様コード
+                    "株式会社ハウスインフォ",     // 得意先様名
+                    "0",                        // 前回御請求額
+                    "0",                        // 繰越金額
+                    "0",                        // 御入金額
+                    totalAmount.toString(),     // 税抜金額(10%)
+                    "0",                        // 返品額
+                    "0",                        // 返品額消費税
+                    "0",                        // 値引額
+                    "0",                        // 値引額消費税
+                    taxAmount.toString(),       // 消費税(10%)
+                    totalWithTax.toString(),    // 今回御請求額
+                    "小川建装",                 // 備考
+                    billingDate,                // 伝票日付
+                    "",                         // 伝票番号
+                    "通常売上",                 // 伝票区分
+                    detail["現場名"],           // ★ 現場名
+                    "",                         // 先方担当者様
+                    "",                         // 得意先様注文番号
+                    "",                         // メーカー
+                    "",                         // 表示品番
+                    "",                         // 商品名（空白）
+                    "1",                        // 数量（現場1件につき1）
+                    detail["金額"],             // 定価
+                    detail["金額"],             // 明細単価
+                    detail["金額"],             // ★ 明細金額
+                    "",                         // 明細摘要
+                    ""                          // 支払期日
+                ];
+                outputData.push(rowData);
+            }
+
+            return Papa.unparse(outputData);
+        }
+
+        // CSVファイルのダウンロード処理 (Excelで文字化けしないようBOM付きUTF-8で出力)
+        function downloadCSV(csvString) {
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, csvString], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '変換後_基本書式_' + formatDates() + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function formatDates() {
+            const d = new Date();
+            return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2);
+        }
+
+        function showMessage(text, type) {
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = text;
+            messageArea.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700', 'border-red-200', 'border-green-200', 'border-blue-200');
+            
+            if (type === 'error') {
+                messageArea.classList.add('bg-red-100', 'text-red-700', 'border', 'border-red-200');
+            } else if (type === 'success') {
+                messageArea.classList.add('bg-green-100', 'text-green-700', 'border', 'border-green-200');
+            } else if (type === 'info') {
+                messageArea.classList.add('bg-blue-100', 'text-blue-700', 'border', 'border-blue-200');
+            }
+        }
+    </script>
+</body>
+</html>
